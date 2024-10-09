@@ -1,90 +1,135 @@
 workspace {
-    name "Delivery Service"
-    description "Моделирование архитектуры сервиса доставки"
+    name "Сервис доставки"
+    description "Система управления пользователями, посылками и доставками"
+
+    !identifiers hierarchical
 
     model {
         user = person "Пользователь" {
-            description "Пользователь сервиса доставки"
+            description "Пользователь, взаимодействующий с системой"
         }
 
-        delivery_service = softwareSystem "Сервис доставки" {
-            description "Онлайн сервис для управления доставкой посылок"
-            user -> this "Использует"
+        deliverySystem = softwareSystem "Delivery System" {
+            description "Система управления пользователями, посылками и доставками"
 
-            web_app = container "Веб-приложение" {
-                description "Интерфейс для пользователей сервиса доставки"
-                technology "React"
-                user -> this "Работает через"
-            }
-
-            api = container "API" {
-                description "Backend API для управления пользователями, посылками и доставками"
-                technology "Spring Boot"
-                web_app -> this "Использует"
-            }
-
-            user_db = container "База данных пользователей" {
-                description "Хранение данных пользователей"
+            userDb = container "User Database" {
                 technology "PostgreSQL"
-                api -> this "Читает и записывает"
+                description "База данных для хранения информации о пользователях"
             }
 
-            parcel_db = container "База данных посылок" {
-                description "Хранение информации о посылках"
+            packageDb = container "Package Database" {
                 technology "PostgreSQL"
-                api -> this "Читает и записывает"
+                description "База данных для хранения информации о посылках"
             }
 
-            delivery_db = container "База данных доставок" {
-                description "Хранение информации о доставках"
+            deliveryDb = container "Delivery Database" {
                 technology "PostgreSQL"
-                api -> this "Читает и записывает"
+                description "База данных для хранения информации о доставках"
+            }
+
+            webApp = container "Web Application" {
+                technology "React, JavaScript"
+                description "Веб-приложение для взаимодействия пользователей с системой"
+            }
+
+            apiGateway = container "API Gateway" {
+                technology "Spring Cloud Gateway"
+                description "API-шлюз для маршрутизации запросов"
+            }
+
+            userService = container "User Service" {
+                technology "Java Spring Boot"
+                description "Сервис управления пользователями"
+                -> apiGateway "Запросы на управление пользователями" "HTTPS"
+                -> userDb "Хранение информации о пользователях" "JDBC"
+            }
+
+            packageService = container "Package Service" {
+                technology "Java Spring Boot"
+                description "Сервис управления посылками"
+                -> apiGateway "Запросы на управление посылками" "HTTPS"
+                -> packageDb "Хранение информации о посылках" "JDBC"
+            }
+
+            deliveryService = container "Delivery Service" {
+                technology "Java Spring Boot"
+                description "Сервис управления доставками"
+                -> apiGateway "Запросы на управление доставками" "HTTPS"
+                -> deliveryDb "Хранение информации о доставках" "JDBC"
             }
         }
 
-        # Определение связей API
-        user -> api "Создание нового пользователя"
-        user -> api "Поиск пользователя по логину"
-        user -> api "Поиск пользователя по имени и фамилии"
-        user -> api "Создание посылки"
-        user -> api "Получение списка посылок"
-        user -> api "Создание доставки"
-        user -> api "Получение информации о доставке"
+        user -> deliverySystem.webApp "Взаимодействует через веб-приложение"
+        deliverySystem.webApp -> deliverySystem.apiGateway "Передача запросов" "HTTPS"
     }
 
     views {
-        systemContext delivery_service "Context" {
+        systemContext deliverySystem {
             include *
-            autoLayout
+            autolayout lr
         }
 
-        container delivery_service "Containers" {
+        container deliverySystem {
             include *
-            autoLayout
+            autolayout lr
         }
 
-        dynamic delivery_service "Dynamic_CreateParcel" {
-            autoLayout lr
-            description "Сценарий создания посылки"
-
-            user -> web_app "Открывает веб-приложение"
-            web_app -> api "Запрос на создание посылки"
-            api -> parcel_db "Сохранение данных о новой посылке"
+        dynamic deliverySystem "createUser" "Создание нового пользователя" {
+            user -> deliverySystem.webApp "Создание нового пользователя"
+            deliverySystem.webApp -> deliverySystem.apiGateway "POST /user"
+            deliverySystem.apiGateway -> deliverySystem.userService "Создает запись в базе данных"
+            deliverySystem.userService -> deliverySystem.userDb "INSERT INTO users"
+            autolayout lr
         }
 
-        styles {
-            element "Person" {
-                color #ffffff
-                fontSize 22
-                shape Person
-            }
-            element "Container" {
-                background #438dd5
-                color #ffffff
-            }
-            element "Database" {
-                shape Cylinder
-            }
+        dynamic deliverySystem "findUserByLogin" "Поиск пользователя по логину" {
+            user -> deliverySystem.webApp "Поиск пользователя по логину"
+            deliverySystem.webApp -> deliverySystem.apiGateway "GET /user?login={login}"
+            deliverySystem.apiGateway -> deliverySystem.userService "Получает пользователя по логину"
+            deliverySystem.userService -> deliverySystem.userDb "SELECT * FROM users WHERE login={login}"
+            autolayout lr
         }
+
+        dynamic deliverySystem "createPackage" "Создание новой посылки" {
+            user -> deliverySystem.webApp "Создание новой посылки"
+            deliverySystem.webApp -> deliverySystem.apiGateway "POST /package"
+            deliverySystem.apiGateway -> deliverySystem.packageService "Создает запись о посылке"
+            deliverySystem.packageService -> deliverySystem.packageDb "INSERT INTO packages"
+            autolayout lr
+        }
+
+        dynamic deliverySystem "getUserPackages" "Получение списка посылок пользователя" {
+            user -> deliverySystem.webApp "Запрашивает список посылок"
+            deliverySystem.webApp -> deliverySystem.apiGateway "GET /user/{id}/packages"
+            deliverySystem.apiGateway -> deliverySystem.packageService "Возвращает список посылок"
+            deliverySystem.packageService -> deliverySystem.packageDb "SELECT * FROM packages WHERE user_id={user_id}"
+            autolayout lr
+        }
+
+        dynamic deliverySystem "createDelivery" "Создание доставки от пользователя к пользователю" {
+            user -> deliverySystem.webApp "Создает доставку"
+            deliverySystem.webApp -> deliverySystem.apiGateway "POST /delivery"
+            deliverySystem.apiGateway -> deliverySystem.deliveryService "Создает запись о доставке"
+            deliverySystem.deliveryService -> deliverySystem.deliveryDb "INSERT INTO deliveries"
+            autolayout lr
+        }
+
+        dynamic deliverySystem "getDeliveryByRecipient" "Получение информации о доставке по получателю" {
+            user -> deliverySystem.webApp "Запрашивает информацию о доставке"
+            deliverySystem.webApp -> deliverySystem.apiGateway "GET /delivery/recipient/{recipientId}"
+            deliverySystem.apiGateway -> deliverySystem.deliveryService "Возвращает информацию о доставке"
+            deliverySystem.deliveryService -> deliverySystem.deliveryDb "SELECT * FROM deliveries WHERE recipient_id={recipientId}"
+            autolayout lr
+        }
+
+        dynamic deliverySystem "getDeliveryBySender" "Получение информации о доставке по отправителю" {
+            user -> deliverySystem.webApp "Запрашивает информацию о доставке"
+            deliverySystem.webApp -> deliverySystem.apiGateway "GET /delivery/sender/{senderId}"
+            deliverySystem.apiGateway -> deliverySystem.deliveryService "Возвращает информацию о доставке"
+            deliverySystem.deliveryService -> deliverySystem.deliveryDb "SELECT * FROM deliveries WHERE sender_id={senderId}"
+            autolayout lr
+        }
+
+        theme default
     }
 }
